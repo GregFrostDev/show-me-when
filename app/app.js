@@ -103,8 +103,15 @@ function render() {
   });
   const ids = new Set(current.map((i) => String(i.id)));
   for (const id of nodes.keys()) if (!ids.has(id)) nodes.delete(id);
-  const same = want.length === list.children.length && want.every((li, k) => list.children[k] === li);
-  if (!same) list.replaceChildren(...want);
+  // Patch the list in place (prove check j: no row node is removed while incidents land): remove only rows whose incident
+  // is gone, insert only new rows, and move a kept row only when the order really changed.
+  const keep = new Set(want);
+  for (const li of [...list.children]) if (!keep.has(li)) li.remove();
+  let at = list.firstElementChild;
+  for (const li of want) {
+    if (li === at) { at = at.nextElementSibling; continue; }
+    list.insertBefore(li, at); // a new row, or (rare) a kept row whose place changed
+  }
   empty.hidden = current.length > 0;
   board.setAttribute('aria-busy', 'false');
 }

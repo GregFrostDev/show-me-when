@@ -216,6 +216,22 @@ test('product step 2: a new incident lands while the confirm is open: the confir
   });
 });
 
+test('prove check j: a new incident lands at the top without removing any row node', async () => {
+  await boardFor({}, async ({ page, fake }) => {
+    await rows(page).first().waitFor();
+    await page.evaluate(() => {
+      window.__rowsRemoved = 0;
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.removedNodes) if (n.nodeType === 1 && n.matches?.('[data-testid="incident-row"]')) window.__rowsRemoved++;
+      }).observe(document, { childList: true, subtree: true });
+    });
+    fake.state.incidents.unshift({ id: 'INC-7998', service: 'booking-api', region: 'eu-central', summary: 'lands on top', severity: 'sev2', openedAt: new Date().toISOString() });
+    await page.waitForFunction(() => document.querySelector('[data-testid="incident-row"]').dataset.id === 'INC-7998', null, { timeout: 5000 });
+    await page.waitForTimeout(2500);
+    assert.equal(await page.evaluate(() => window.__rowsRemoved), 0, 'no row node removed');
+  });
+});
+
 test('R2: a click during a refresh is not lost (rows are kept, not rebuilt)', async () => {
   await boardFor({}, async ({ page, fake }) => {
     await rows(page).first().waitFor();
