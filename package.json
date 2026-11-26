@@ -1,0 +1,13 @@
+{
+  "name": "sched-prod-incident-board",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "npx --yes serve@14.2.4 app",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "build": "node tools/build.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}

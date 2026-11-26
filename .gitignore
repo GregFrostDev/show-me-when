@@ -1,0 +1,5 @@
+node_modules/
+dist/
+test-results/
+out/
+test-results-report.md

@@ -1,0 +1,53 @@
+# Deploy the board to GitHub Pages (option A in the build report). Every push to main: the tests gate the deploy,
+# then tools/build.mjs writes the commit's sha into the page (R6) and config.js from the SESSION secret, so the session is never in git.
+# prove.yml is the course's file and stays as shipped; this is a separate workflow.
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci || npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm test
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build with the commit sha and the session secret
+        env:
+          SESSION: ${{ secrets.SESSION }}
+        run: |
+          test -n "$SESSION" || { echo "SESSION secret is not set"; exit 1; }
+          printf '%s' "$SESSION" > "$RUNNER_TEMP/session"
+          node tools/build.mjs --out dist --session-file "$RUNNER_TEMP/session" --sha "$GITHUB_SHA"
+          rm -f "$RUNNER_TEMP/session"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deploy
+        uses: actions/deploy-pages@v4

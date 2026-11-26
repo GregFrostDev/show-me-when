@@ -1,0 +1,179 @@
+{
+  "api": "https://hq.mega.dev/challenges/show-me-when/api",
+  "first": {
+    "at": "2026-11-25T23:13:52.806Z",
+    "request": "https://hq.mega.dev/challenges/show-me-when/api/incidents?t=v1.eyJ...<masked>",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "access-control-allow-origin": "*",
+      "cache-control": "private, no-store"
+    },
+    "body": {
+      "updatedAt": "2026-11-25T23:13:52.918Z",
+      "incidents": [
+        {
+          "id": "INC-5056",
+          "service": "studio-search",
+          "region": "ap-south",
+          "summary": "search returns stale studios",
+          "severity": "sev1",
+          "openedAt": "2026-11-25T23:06:22.849Z"
+        },
+        {
+          "id": "INC-3874",
+          "service": "studio-search",
+          "region": "ap-southeast",
+          "summary": "calendar push rejected",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:58:47.813Z"
+        },
+        {
+          "id": "INC-9818",
+          "service": "studio-search",
+          "region": "eu-central",
+          "summary": "slot times off by one hour",
+          "severity": "sev2",
+          "openedAt": "2026-11-25T22:52:11.607Z"
+        },
+        {
+          "id": "INC-1421",
+          "service": "studio-search",
+          "region": "ap-southeast",
+          "summary": "search returns stale studios",
+          "severity": "sev2",
+          "openedAt": "2026-11-25T22:45:06.293Z"
+        },
+        {
+          "id": "INC-8138",
+          "service": "auth",
+          "region": "us-west",
+          "summary": "payment confirmations slow",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:37:49.002Z"
+        },
+        {
+          "id": "INC-2515",
+          "service": "reminders",
+          "region": "eu-central",
+          "summary": "slot times off by one hour",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:31:14.585Z"
+        },
+        {
+          "id": "INC-5223",
+          "service": "booking-api",
+          "region": "us-west",
+          "summary": "search returns stale studios",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:24:46.319Z"
+        },
+        {
+          "id": "INC-5748",
+          "service": "sessions",
+          "region": "ap-southeast",
+          "summary": "session · ilse · studio · auckland · 04:03 on the sheet",
+          "severity": "sev3",
+          "openedAt": "2026-11-24T03:11:00.000Z"
+        }
+      ],
+      "cursor": "<cursor 1 masked, 156 chars>"
+    }
+  },
+  "second": {
+    "at": "2026-11-25T23:13:52.947Z",
+    "request": "https://hq.mega.dev/challenges/show-me-when/api/incidents?t=v1.eyJ...<masked>&since=<cursor 1>",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "access-control-allow-origin": "*",
+      "cache-control": "private, no-store"
+    },
+    "body": {
+      "updatedAt": "2026-11-25T23:13:52.954Z",
+      "incidents": [
+        {
+          "id": "INC-5056",
+          "service": "studio-search",
+          "region": "ap-south",
+          "summary": "search returns stale studios",
+          "severity": "sev1",
+          "openedAt": "2026-11-25T23:06:22.849Z"
+        },
+        {
+          "id": "INC-3874",
+          "service": "studio-search",
+          "region": "ap-southeast",
+          "summary": "calendar push rejected",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:58:47.813Z"
+        },
+        {
+          "id": "INC-9818",
+          "service": "studio-search",
+          "region": "eu-central",
+          "summary": "slot times off by one hour",
+          "severity": "sev2",
+          "openedAt": "2026-11-25T22:52:11.607Z"
+        },
+        {
+          "id": "INC-1421",
+          "service": "studio-search",
+          "region": "ap-southeast",
+          "summary": "search returns stale studios",
+          "severity": "sev2",
+          "openedAt": "2026-11-25T22:45:06.293Z"
+        },
+        {
+          "id": "INC-8138",
+          "service": "auth",
+          "region": "us-west",
+          "summary": "payment confirmations slow",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:37:49.002Z"
+        },
+        {
+          "id": "INC-2515",
+          "service": "reminders",
+          "region": "eu-central",
+          "summary": "slot times off by one hour",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:31:14.585Z"
+        },
+        {
+          "id": "INC-5223",
+          "service": "booking-api",
+          "region": "us-west",
+          "summary": "search returns stale studios",
+          "severity": "sev3",
+          "openedAt": "2026-11-25T22:24:46.319Z"
+        },
+        {
+          "id": "INC-5748",
+          "service": "sessions",
+          "region": "ap-southeast",
+          "summary": "session · ilse · studio · auckland · 04:03 on the sheet",
+          "severity": "sev3",
+          "openedAt": "2026-11-24T03:11:00.000Z"
+        }
+      ],
+      "cursor": "<cursor 2 masked, 156 chars>"
+    }
+  },
+  "badSince": {
+    "at": "2026-11-25T23:13:52.979Z",
+    "request": "https://hq.mega.dev/challenges/show-me-when/api/incidents?t=v1.eyJ...<masked>&since=not-a-cursor",
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "access-control-allow-origin": "*",
+      "cache-control": "private, no-store"
+    },
+    "body": {
+      "message": "That cursor is not from this session. Load the board again (poll without since) to start over.",
+      "error": "Bad Request",
+      "statusCode": 400
+    }
+  },
+  "note": "Read-only probe by the build agent, board/tools/probe.mjs, 2026-11-25T23:13:52Z. Session and cursors masked; full reply in private/probe-1.json (git-ignored). /ack not called."
+}

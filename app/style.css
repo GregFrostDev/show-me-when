@@ -1,0 +1,33 @@
+body { margin: 0; font: 15px/1.4 system-ui, sans-serif; color: #1d1d1f; background: #fafafa; }
+header, main, footer { padding: 12px 24px; }
+h1 { margin: 0; font-size: 22px; }
+.sub { margin: 2px 0 0; color: #666; }
+.list { list-style: none; margin: 0; padding: 0; max-width: 960px; }
+.row { display: grid; grid-template-columns: 90px 50px 1fr 200px auto; gap: 12px; align-items: center; min-height: 44px; padding: 0 12px; border-bottom: 1px solid #e5e5e5; background: #fff; }
+.row .id { font-family: ui-monospace, monospace; }
+.row.sev1 .sev { color: #b00020; font-weight: 600; }
+.row.sev2 .sev { color: #a15c00; }
+.row time { color: #555; font-variant-numeric: tabular-nums; }
+footer { color: #777; font-size: 13px; }
+.row { grid-template-columns: 90px 50px 1fr 230px 150px; }
+.row .when { display: flex; gap: 6px; align-items: baseline; }
+.row .tz { color: #888; font-size: 12px; }
+.row.new { background: #fff8d6; transition: background 1s; }
+.row.acked { background: #f2f8f2; }
+.row .act { display: flex; gap: 8px; align-items: center; }
+button.ack { font: inherit; padding: 4px 14px; border: 1px solid #1d1d1f; border-radius: 6px; background: #fff; cursor: pointer; }
+button.ack:disabled { opacity: 0.6; cursor: wait; }
+.acked-mark { color: #1b6e2a; font-weight: 600; }
+.ack-error, .status { color: #b00020; }
+.loader, .empty { color: #555; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid #bbb; border-top-color: #1d1d1f; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+[hidden] { display: none !important; }
+footer code { font-size: 12px; }
+@media (max-width: 720px) {
+  header, main, footer { padding: 10px 16px; }
+  .row { grid-template-columns: 1fr auto; grid-template-areas: "id act" "what what" "when sev"; padding: 8px 12px; gap: 4px 12px; }
+  .row .id { grid-area: id; } .row .sev { grid-area: sev; justify-self: end; } .row .what { grid-area: what; }
+  .row .when { grid-area: when; } .row .act { grid-area: act; justify-self: end; }
+  footer code { word-break: break-all; }
+}
