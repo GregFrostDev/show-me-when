@@ -20,6 +20,7 @@ const WHERE = {
   'watch-board': [['app/app.js', 'setTimeout(refresh'], ['app/app.js', 'export const REFRESH_MS']],
   times: [['app/time.js', 'export function formatLocal('], ['app/app.js', "setAttr(c.time, 'datetime', iso)"]],
   build: [['app/index.html', '<meta name="build"'], ['app/index.html', 'data-testid="build-sha"']],
+  race: [['app/app.js', 'if (!same) list.replaceChildren(...want);'], ['app/app.js', 'current = newestFirst('], ['app/app.js', 'async function refresh()']],
 };
 export function where(key, root = ROOT) {
   return WHERE[key].map(([file, needle]) => {
@@ -39,29 +40,35 @@ export function makeReport(tl, { flow = 'ack-incident', videoLink } = {}) {
   const seg = (e) => (tl.segments || []).filter((s) => s.startS <= e.atS).at(-1);
   const viewer = (e) => { const s = seg(e); return s ? ` (viewer ${s.locale}, ${s.timezoneId})` : ''; };
   const checked = tl.events.map((e) => `- ${mmss(e.atS)} · ${e.flow} · ${e.what}${viewer(e)}`);
-  const evidence = { flow, at: mmss(ev.atS), receipt: ev.receipt, sha: tl.sha, videoLink: link };
+  // Claim 2 refusal: the evidence block names the row meant and the row that got the ack, as expected and got (incident ids).
+  const evidence = { flow, at: mmss(ev.atS), ...(ev.meant ? { expected: ev.meant, got: ev.id } : {}), receipt: ev.receipt, sha: tl.sha, videoLink: link };
   const md = [
     SECTIONS[0],
     `I opened the deployed board at ${tl.url} in Chromium and recorded it (${Math.round(tl.durationS)} s). What I did and what I saw, in order:`,
     ...checked,
     `The footer and \`<meta name="build">\` show build ${tl.sha} in the recording.`,
+    ...(ev.miss ? [`The board misbehaved at ${mmss(ev.atS)}: I meant ${ev.meant}; ${ev.landed} landed at the top just before my click, the rows moved down, and the Ack went to ${ev.id}. The receipt below is the ack API's receipt for that wrong ack.`] : []),
     '',
     SECTIONS[1],
     ...tl.events.map((e) => `- ${mmss(e.atS)} ${e.flow}${e.id ? ` (${e.id})` : ''}`),
-    `- Reported moment: ${mmss(ev.atS)}, ${flow}.`,
+    `- Reported moment: ${mmss(ev.atS)}, ${flow}${ev.miss ? `: the board misbehaved; the row I meant was ${ev.meant}, the Ack went to ${ev.id}` : ''}.`,
     '',
     SECTIONS[2],
     `- ${where(flow)[0]} (${flow}, the reported moment; also ${where(flow).slice(1).join(', ')})`,
     ...LIMITS.flows.filter((k) => k !== flow).map((k) => `- ${k}: ${where(k).join(', ')}`),
     `- local times (SCHED-4514): ${where('times').join(', ')}`,
     `- build sha (R6): ${where('build').join(', ')}`,
+    ...(ev.miss ? [`- the moving list (the misbehaviour): ${where('race').join(', ')} (each refresh puts the newest incident first and replaces the rows, so the buttons move under the pointer)`] : []),
     '',
     SECTIONS[3],
-    '1. Acked rows. (a) Stay in place with an acked mark, as built now (two-way door). (b) Move below the open ones (two-way). (c) Hide after some minutes (two-way, but on-call loses the history on screen).',
-    '2. Who acked. (a) No name, as built now: the ack API takes no name. (b) Show the on-call name: needs a new field in the ack API and stored data (one-way door once others read it).',
-    '3. Time format. (a) The viewer\'s own clock (12 h in en-NZ and en-US) with the zone name, dd/mm for EU locales, as built now (two-way). (b) A 24-hour clock for everyone (two-way). (c) Local time plus UTC beside it (two-way).',
-    '4. Refresh. (a) Every 2 s while open (R4), as built now (two-way). (b) Pause while the tab is hidden, to cut load (two-way).',
-    '5. Ack state for other viewers. (a) Shown on the page that acked until it is reloaded, as built now: the incidents API returns no ack state (two-way). (b) Also kept in that browser across a reload (two-way). (c) Shared with every viewer: the incidents API returns ackedAt (a data change, one-way door once others rely on it).',
+    ...[
+      ...(ev.miss ? ['Ack under a moving list (the misbehaviour above). (a) Keep it, as built now: a new incident pushes the rows down at any moment (two-way door). (b) While the pointer is over the list, hold new incidents above it behind a "N new incidents" bar and add them on click or when the pointer leaves (two-way). (c) Keep the row under the pointer in place and add new rows above without moving it (two-way). (d) Ignore a click on an Ack button that moved in the last 500 ms (two-way).'] : []),
+      'Acked rows. (a) Stay in place with an acked mark, as built now (two-way door). (b) Move below the open ones (two-way). (c) Hide after some minutes (two-way, but on-call loses the history on screen).',
+      'Who acked. (a) No name, as built now: the ack API takes no name. (b) Show the on-call name: needs a new field in the ack API and stored data (one-way door once others read it).',
+      "Time format. (a) The viewer's own clock (12 h in en-NZ and en-US) with the zone name, dd/mm for EU locales, as built now (two-way). (b) A 24-hour clock for everyone (two-way). (c) Local time plus UTC beside it (two-way).",
+      'Refresh. (a) Every 2 s while open (R4), as built now (two-way). (b) Pause while the tab is hidden, to cut load (two-way).',
+      'Ack state for other viewers. (a) Shown on the page that acked until it is reloaded, as built now: the incidents API returns no ack state (two-way). (b) Also kept in that browser across a reload (two-way). (c) Shared with every viewer: the incidents API returns ackedAt (a data change, one-way door once others rely on it).',
+    ].map((t, n) => `${n + 1}. ${t}`),
     '',
     '```evidence',
     JSON.stringify(evidence, null, 2),

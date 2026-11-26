@@ -82,7 +82,7 @@ function update(n, inc) {
   let btn = c.act.querySelector('[data-testid="ack"]');
   if (!btn) {
     btn = el('button', { type: 'button', 'data-testid': 'ack', class: 'ack' });
-    btn.addEventListener('click', () => onAck(id));
+    btn.addEventListener('click', () => askAck(id)); // product (step 2): Ack asks to confirm, and the confirm names the incident id
   }
   setText(btn, pending.has(id) ? 'Acking…' : 'Ack');
   btn.disabled = pending.has(id);
@@ -108,6 +108,42 @@ function render() {
   empty.hidden = current.length > 0;
   board.setAttribute('aria-busy', 'false');
 }
+
+// Product's decision (step 2): new incidents stay live at the top and Ack stays on the row, but Ack asks to confirm, and the
+// confirm names the incident id. The confirm sits outside the list, in a fixed place, so a refresh never moves it; while it
+// is open, a backdrop takes every click outside it (and does not close it), so a row that moved cannot be acked by mistake.
+let confirmFor = null;
+const backdrop = el('div', { class: 'confirm-backdrop', hidden: '' });
+const confirmText = el('p', { 'data-testid': 'confirm-text', id: 'confirm-text' });
+const confirmAck = el('button', { type: 'button', 'data-testid': 'confirm-ack', class: 'ack' });
+const confirmCancel = el('button', { type: 'button', 'data-testid': 'confirm-cancel', class: 'ack cancel' }, 'Cancel');
+const confirmBox = el('div', { 'data-testid': 'confirm', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'confirm-text', class: 'confirm', hidden: '' });
+confirmBox.append(confirmText, el('div', { class: 'confirm-actions' }), backdrop);
+confirmBox.querySelector('.confirm-actions').append(confirmAck, confirmCancel);
+confirmBox.removeChild(backdrop);
+document.body.append(backdrop, confirmBox);
+
+export function askAck(id) {
+  if (pending.has(id) || acked.has(id) || confirmFor) return;
+  const inc = current.find((i) => String(i.id) === id);
+  confirmFor = id;
+  confirmBox.dataset.id = id;
+  confirmText.textContent = `Ack ${id}${inc && inc.summary ? ` (${[inc.service, inc.summary].map((x) => String(x ?? '')).join(' · ')})` : ''}?`;
+  confirmAck.textContent = `Ack ${id}`;
+  backdrop.hidden = false;
+  confirmBox.hidden = false;
+  confirmCancel.focus(); // the safe choice has the focus
+}
+function closeConfirm() {
+  confirmFor = null;
+  delete confirmBox.dataset.id;
+  confirmBox.hidden = true;
+  backdrop.hidden = true;
+}
+confirmAck.addEventListener('click', () => { const id = confirmFor; closeConfirm(); if (id) onAck(id); });
+confirmCancel.addEventListener('click', closeConfirm);
+backdrop.addEventListener('click', (e) => e.stopPropagation()); // takes the click; only Cancel or Escape closes the confirm
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && confirmFor) closeConfirm(); });
 
 async function onAck(id) {
   if (pending.has(id) || acked.has(id)) return; // one ack per row: a double click sends one request

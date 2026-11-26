@@ -6,6 +6,7 @@
 //   --yes-ack is required to press Ack on a board that is not on 127.0.0.1 (a real ack on the live course).
 // Prints one JSON line: {"ok":true,"video":...,"timeline":...,"durationS":...,"events":n} or {"ok":false,"field":...,"error":...}.
 // Exit 0 ok, 1 a check failed (nothing is sent after it), 2 a wrong call.
+import { raceVerdict } from './race.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -23,6 +24,9 @@ const ackWhat = opt('--ack', 'top');
 const watchS = Number(opt('--watch-s', '45'));
 const aucklandS = Number(opt('--auckland-s', '8'));
 const apiHostArg = opt('--api-host', 'hq.mega.dev');
+const stepArg = opt('--step', '1'); // 2 = product's step-2 build: every Ack must open a confirm naming the id (Sol P2)
+if (!['1', '2'].includes(stepArg)) wrong('--step', 'must be 1 or 2');
+const step2 = stepArg === '2';
 let board;
 try { board = new URL(url); } catch { wrong('--url', `"${String(url).slice(0, 80)}" is not a URL. Send the deployed board, like https://<host>/`); }
 if (!['https:', 'http:'].includes(board.protocol)) wrong('--url', 'must be http(s). Send the https address of the board');
@@ -31,7 +35,7 @@ if (!local && board.protocol !== 'https:') wrong('--url', 'a deployed board must
 if (!outArg) wrong('--out', 'missing. Send a folder for the video and timeline, like private/rec-step1');
 const out = path.resolve(outArg); // absolute: ffmpeg's concat list reads paths relative to its own folder
 if (!/^[0-9a-f]{40}$/.test(String(expectSha))) wrong('--expect-sha', 'must be the 40-hex sha of the deployed build. Send the sha the deploy printed');
-if (!(ackWhat === 'top' || ackWhat === 'none' || /^[A-Za-z0-9-]{1,40}$/.test(ackWhat))) wrong('--ack', 'must be top, none or an incident id like INC-5056');
+if (!(ackWhat === 'top' || ackWhat === 'none' || ackWhat === 'race' || /^[A-Za-z0-9-]{1,40}$/.test(ackWhat))) wrong('--ack', 'must be top, none or an incident id like INC-5056');
 if (!(watchS >= 0 && watchS <= 600)) wrong('--watch-s', 'must be 0 to 600 seconds');
 if (ackWhat !== 'none' && !local && !args.includes('--yes-ack')) wrong('--yes-ack', 'pressing Ack on a deployed board sends a real ack to the course. Add --yes-ack only with your human\'s yes for it');
 
@@ -55,9 +59,11 @@ async function segment(browser, { name, locale, timezoneId }, body) {
   const polls = [];
   page.on('console', (m) => { const t = m.text(); if (t.startsWith('ack ')) ackLines.push({ t, at: Date.now() }); });
   page.on('request', (r) => { if (r.url().includes('/incidents')) polls.push(Date.now()); });
+  const ackReqs = [];
+  page.on('request', (r) => { const u = r.url(); if (/\/ack(\?|$)/.test(new URL(u).pathname + (new URL(u).search ? '?' : ''))) ackReqs.push({ id: new URL(u).searchParams.get('id'), at: Date.now() }); });
   const local = [];
   const mark = (e) => local.push({ ...e, ms: Date.now() - t0 });
-  try { await body({ page, mark, ackLines, polls }); } finally {
+  try { await body({ page, mark, ackLines, polls, ackReqs }); } finally {
     await ctx.close();
   }
   const video = fs.readdirSync(path.join(rawDir, name)).find((f) => f.endsWith('.webm'));
@@ -67,7 +73,7 @@ async function segment(browser, { name, locale, timezoneId }, body) {
 const browser = await chromium.launch();
 let segs;
 try {
-  const s1 = await segment(browser, { name: 'berlin', locale: 'de-DE', timezoneId: 'Europe/Berlin' }, async ({ page, mark, ackLines, polls }) => {
+  const s1 = await segment(browser, { name: 'berlin', locale: 'de-DE', timezoneId: 'Europe/Berlin' }, async ({ page, mark, ackLines, polls, ackReqs }) => {
     await page.goto(board.toString());
     const rows = page.locator('[data-testid="incident-row"]');
     await rows.first().waitFor({ timeout: 15000 });
@@ -78,12 +84,89 @@ try {
     const loaderGone = (await page.locator('[data-testid="loader"]').count()) === 0;
     mark({ flow: 'open-board', what: `board loaded with ${initial.length} incidents, newest first, loader ${loaderGone ? 'gone' : 'still shown'}; footer shows build ${expectSha.slice(0, 12)}`, sha: meta });
     await page.waitForTimeout(4000);
-    if (ackWhat !== 'none') {
+    let raced = false;
+    if (ackWhat === 'race') {
+      // Click like a person (check-lane ack-race): aim the mouse at the Ack of the row we mean, keep it there while the board
+      // refreshes, and click at that spot when a new incident lands at the top. The page is not held still for the click.
+      const meantRow = page.locator('[data-testid="incident-row"]:has([data-testid="ack"])').first();
+      const meant = await meantRow.getAttribute('data-id', { timeout: 5000 });
+      const box = await meantRow.locator('[data-testid="ack"]').boundingBox();
+      const x = box.x + box.width / 2, y = box.y + box.height / 2;
+      await page.mouse.move(x - 160, y + 90);
+      await page.mouse.move(x, y, { steps: 20 });
+      mark({ flow: 'ack-incident', what: `aimed the mouse at the Ack of ${meant}, the top open row, the row I meant`, id: meant, aim: true });
+      const topNow = await rows.first().getAttribute('data-id');
+      const tAim = Date.now();
+      let landed = null;
+      while (Date.now() - tAim < watchS * 1000) {
+        const top = await rows.first().getAttribute('data-id').catch(() => null);
+        if (top && top !== topNow && !initial.includes(top)) { landed = top; break; }
+        await page.waitForTimeout(20);
+      }
+      if (!landed) throw Object.assign(new Error(`no new incident landed in ${watchS} s while the mouse was on the Ack of ${meant}; run again with a longer --watch-s`), { field: 'race' });
+      mark({ flow: 'watch-board', what: `${landed} landed at the top without a reload while the mouse rested on the Ack of ${meant}; the rows moved down`, id: landed });
+      await page.waitForTimeout(150); // a person's click already on its way
+      const before = ackLines.length;
+      const reqsBefore = ackReqs.length; // Sol P2-cancel: counted before the raced click
+      await page.mouse.click(x, y);
+      // Product's step-2 build: Ack opens a confirm that names the incident id. A person reads it: a wrong id -> Cancel, then
+      // the Ack of the row meant, then confirm. The old build has no confirm and acks at once.
+      const confirm = page.locator('[data-testid="confirm"]');
+      let caught = null;
+      const opened = await confirm.waitFor({ state: 'visible', timeout: 1500 }).then(() => true, () => false);
+      if (step2 && !opened) throw Object.assign(new Error('step 2: the click opened no confirm'), { field: 'race' });
+      if (opened) {
+        const shown = await confirm.getAttribute('data-id');
+        if (step2 && shown !== landed) throw Object.assign(new Error(`step 2: the first confirm names ${shown}, not ${landed}, the incident that landed under the pointer`), { field: 'race' });
+        if (step2 && !(await confirm.textContent()).includes(shown)) throw Object.assign(new Error(`step 2: the confirm text does not name ${shown}`), { field: 'race' });
+        if (shown !== meant) {
+          caught = shown;
+          await page.waitForTimeout(1200); // reading the confirm
+          await page.locator('[data-testid="confirm-cancel"]').click();
+          await confirm.waitFor({ state: 'hidden', timeout: 3000 });
+          await page.waitForTimeout(600);
+          if (ackReqs.length !== reqsBefore) throw Object.assign(new Error(`a GET /ack went out before the confirm (${ackReqs.slice(reqsBefore).map((r) => r.id).join(', ')})`), { field: 'race' });
+          mark({ flow: 'ack-incident', what: `the click landed on the moved row: the confirm named ${shown}, not ${meant}, the row I meant; pressed Cancel; no ack request went out`, id: shown, meant, landed, caught: true });
+          await page.locator(`[data-testid="incident-row"][data-id="${meant}"] [data-testid="ack"]`).click();
+          await confirm.waitFor({ state: 'visible', timeout: 3000 });
+          if ((await confirm.getAttribute('data-id')) !== meant || !(await confirm.textContent()).includes(meant)) throw Object.assign(new Error(`the second confirm does not name ${meant}`), { field: 'race' });
+          if (ackReqs.length !== reqsBefore) throw Object.assign(new Error('a GET /ack went out before the second confirm'), { field: 'race' });
+          await page.waitForTimeout(1000);
+        }
+        await page.locator('[data-testid="confirm-ack"]').click();
+      }
+      const tClick = Date.now();
+      while (ackLines.length === before && Date.now() - tClick < 10000) await page.waitForTimeout(50);
+      const line = ackLines[before];
+      if (!line) throw Object.assign(new Error('no "ack <id> ..." console line with a receipt after the click'), { field: 'receipt' });
+      const [, hit, ackedAt, ...rest] = line.t.split(' ');
+      const miss = hit !== meant;
+      await page.waitForTimeout(500);
+      const sent = ackReqs.slice(reqsBefore);
+      if (step2 && !(sent.length === 1 && sent[0].id === meant)) throw Object.assign(new Error(`step 2: expected exactly one GET /ack for ${meant}, saw ${sent.map((r) => r.id).join(', ') || 'none'}`), { field: 'race' });
+      const bad = raceVerdict({ meant, landed, hit, receipt: rest.join(' '), caught }); // R1 (Sol, claim 2), tested in test/race.test.mjs
+      if (bad) throw Object.assign(new Error(bad.error), { field: bad.field });
+      mark({ flow: 'ack-incident', what: caught ? `the confirm named ${meant}; pressed Ack ${meant}: the Ack went to ${hit}, the row I meant; the ack API answered ackedAt ${ackedAt}` : miss ? `clicked the same spot: the Ack went to ${hit}, the incident that had just landed, not to ${meant}, the row I meant; the ack API answered ackedAt ${ackedAt}` : `clicked the same spot: the Ack went to ${hit}, the row I meant; the ack API answered ackedAt ${ackedAt}`, id: hit, meant, landed, miss, caught: Boolean(caught), ackedAt, receipt: rest.join(' ') });
+      raced = true;
+      await page.waitForTimeout(4000);
+    }
+    if (ackWhat !== 'none' && !raced) {
       const target = ackWhat === 'top' ? page.locator('[data-testid="incident-row"]:has([data-testid="ack"])').first() : page.locator(`[data-testid="incident-row"][data-id="${ackWhat}"]`);
       const id = await target.getAttribute('data-id', { timeout: 5000 });
       const row = page.locator(`[data-testid="incident-row"][data-id="${id}"]`); // pin the row: the ":has(ack)" locator moves on after the ack
+      const nReq = ackReqs.length;
       await row.locator('[data-testid="ack"]').click();
+      const cf = page.locator('[data-testid="confirm"]');
+      const cfOpen = await cf.waitFor({ state: 'visible', timeout: 1500 }).then(() => true, () => false);
+      if (step2 && !cfOpen) throw Object.assign(new Error('step 2: Ack opened no confirm'), { field: 'confirm' });
+      if (cfOpen) {
+        if ((await cf.getAttribute('data-id')) !== id || !(await cf.textContent()).includes(id)) throw Object.assign(new Error(`the confirm does not name ${id}`), { field: 'confirm' });
+        await page.waitForTimeout(800);
+        if (ackReqs.length !== nReq) throw Object.assign(new Error('a GET /ack went out before the confirm'), { field: 'confirm' });
+        await page.locator('[data-testid="confirm-ack"]').click();
+      }
       await row.locator('[data-testid="acked"]').waitFor({ timeout: 10000 });
+      if (step2) { await page.waitForTimeout(300); const sentN = ackReqs.slice(nReq); if (!(sentN.length === 1 && sentN[0].id === id)) throw Object.assign(new Error(`step 2: expected exactly one GET /ack for ${id}, saw ${sentN.map((r) => r.id).join(', ') || 'none'}`), { field: 'confirm' }); }
       const line = ackLines.find((l) => l.t.split(' ')[1] === id);
       if (!line) throw Object.assign(new Error(`no "ack ${id} ..." console line with a receipt after the click`), { field: 'receipt' });
       const [, , ackedAt, ...rest] = line.t.split(' ');
@@ -92,14 +175,14 @@ try {
     const pollsBefore = polls.length;
     const tWatch = Date.now();
     let appeared = null;
-    while (Date.now() - tWatch < watchS * 1000) {
+    while (!raced && Date.now() - tWatch < watchS * 1000) {
       const now = await rows.evaluateAll((els) => els.map((e) => e.dataset.id));
       const fresh = now.find((x) => !initial.includes(x));
       if (fresh && now[0] === fresh) { appeared = fresh; break; }
       await page.waitForTimeout(250);
     }
     const refreshes = polls.length - pollsBefore;
-    if (appeared) mark({ flow: 'watch-board', what: `${appeared} came in and showed at the top without a reload (${refreshes} refreshes while watching)`, id: appeared });
+    if (raced) { /* the watch-board moment is the landing during the race */ } else if (appeared) mark({ flow: 'watch-board', what: `${appeared} came in and showed at the top without a reload (${refreshes} refreshes while watching)`, id: appeared });
     else mark({ flow: 'watch-board', what: `kept the board open ${watchS} s without a reload: ${refreshes} refreshes, no new incident in that time` });
     await page.waitForTimeout(3000);
   });

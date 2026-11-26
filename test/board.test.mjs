@@ -146,6 +146,7 @@ test('R2 (ack-incident): Ack calls api.ack(id) with the latest cursor, marks onl
     await page.waitForTimeout(2300); // let one refresh pass, so a cursor from a refresh is the latest
     const row = page.locator('[data-testid="incident-row"][data-id="INC-9818"]');
     await row.locator('[data-testid="ack"]').dblclick();
+    await page.locator('[data-testid="confirm-ack"]').click();
     await row.locator('[data-testid="acked"]').waitFor({ timeout: 2000 });
     assert.equal(fake.state.acks.length, 1, 'a double click sends one ack');
     assert.equal(fake.state.acks[0].id, 'INC-9818');
@@ -163,12 +164,55 @@ test('R2: an ack that fails names the incident, leaves the row un-acked, and Ack
     await rows(page).first().waitFor();
     const row = page.locator('[data-testid="incident-row"][data-id="INC-5056"]');
     await row.locator('[data-testid="ack"]').click();
+    await page.locator('[data-testid="confirm-ack"]').click();
     await row.locator('.ack-error').waitFor({ timeout: 2000 });
     assert.match(await row.locator('.ack-error').textContent(), /^Ack for INC-5056 failed: ack: 500 .*Press Ack again\.$/);
     assert.equal(await row.locator('[data-testid="acked"]').count(), 0);
     await row.locator('[data-testid="ack"]').click();
+    await page.locator('[data-testid="confirm-ack"]').click();
     await row.locator('[data-testid="acked"]').waitFor({ timeout: 2000 });
     assert.equal(fake.state.acks.length, 2);
+  });
+});
+
+test('product step 2: Ack asks to confirm, the confirm names the incident id, Cancel sends nothing', async () => {
+  await boardFor({}, async ({ page, fake }) => {
+    await rows(page).first().waitFor();
+    const row = page.locator('[data-testid="incident-row"][data-id="INC-9818"]');
+    await row.locator('[data-testid="ack"]').click();
+    const confirm = page.locator('[data-testid="confirm"]');
+    await confirm.waitFor({ state: 'visible', timeout: 2000 });
+    assert.match(await confirm.textContent(), /INC-9818/);
+    assert.match(await page.locator('[data-testid="confirm-ack"]').textContent(), /^Ack INC-9818$/);
+    assert.equal(fake.state.acks.length, 0, 'no ack before the confirm');
+    await page.locator('[data-testid="confirm-cancel"]').click();
+    await confirm.waitFor({ state: 'hidden', timeout: 2000 });
+    await page.waitForTimeout(300);
+    assert.equal(fake.state.acks.length, 0, 'Cancel sends nothing');
+    assert.equal(await row.locator('[data-testid="acked"]').count(), 0);
+    await row.locator('[data-testid="ack"]').click();
+    await page.keyboard.press('Escape');
+    await confirm.waitFor({ state: 'hidden', timeout: 2000 });
+    assert.equal(fake.state.acks.length, 0, 'Escape sends nothing');
+  });
+});
+
+test('product step 2: a new incident lands while the confirm is open: the confirm keeps its id and a click on the moved rows acks nothing', async () => {
+  await boardFor({}, async ({ page, fake }) => {
+    await rows(page).first().waitFor();
+    const top = await rows(page).first().getAttribute('data-id');
+    const box = await rows(page).first().locator('[data-testid="ack"]').boundingBox();
+    await rows(page).first().locator('[data-testid="ack"]').click();
+    await page.locator('[data-testid="confirm"]').waitFor({ state: 'visible' });
+    fake.state.incidents.unshift({ id: 'INC-7999', service: 'booking-api', region: 'eu-central', summary: 'lands while the confirm is open', severity: 'sev2', openedAt: new Date().toISOString() });
+    await page.waitForFunction((t) => document.querySelector('[data-testid="incident-row"]').dataset.id !== t, top, { timeout: 5000 });
+    assert.equal(await page.locator('[data-testid="confirm"]').getAttribute('data-id'), top, 'the confirm still names the row meant');
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2); // the spot where the meant Ack was: now the new row
+    await page.waitForTimeout(300);
+    assert.equal(fake.state.acks.length, 0, 'the click on the moved list acks nothing');
+    await page.locator('[data-testid="confirm-ack"]').click();
+    await page.locator(`[data-testid="incident-row"][data-id="${top}"] [data-testid="acked"]`).waitFor({ timeout: 2000 });
+    assert.deepEqual(fake.state.acks.map((a) => a.id), [top], 'only the row meant is acked');
   });
 });
 
@@ -178,7 +222,7 @@ test('R2: a click during a refresh is not lost (rows are kept, not rebuilt)', as
     const before = await rows(page).first().elementHandle();
     await page.waitForTimeout(2200);
     assert.ok(await before.evaluate((e) => e.isConnected), 'same row node after a refresh with no change');
-    for (let k = 0; k < 5; k++) { await page.locator('[data-testid="incident-row"]').nth(k).locator('[data-testid="ack"]').click(); await page.waitForTimeout(450); }
+    for (let k = 0; k < 5; k++) { await page.locator('[data-testid="incident-row"]').nth(k).locator('[data-testid="ack"]').click(); await page.locator('[data-testid="confirm-ack"]').click(); await page.waitForTimeout(450); }
     await page.waitForFunction(() => document.querySelectorAll('[data-testid="acked"]').length === 5, null, { timeout: 3000 });
     assert.equal(fake.state.acks.length, 5);
   });
@@ -194,6 +238,7 @@ test('R2 regression (live, log.md 23:28Z): with openedAt sliding on every poll, 
     assert.notEqual(t1, t2, 'the fake slides openedAt like the live API');
     assert.ok(await btn.evaluate((e) => e.isConnected), 'the Ack button is the same node after a refresh');
     await btn.click();
+    await page.locator('[data-testid="confirm-ack"]').click();
     await page.locator('[data-testid="incident-row"][data-id="INC-3874"] [data-testid="acked"]').waitFor({ timeout: 2000 });
     assert.equal(fake.state.acks.length, 1);
   });
